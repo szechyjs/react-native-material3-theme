@@ -1,22 +1,85 @@
 import { NativeModules, Platform } from 'react-native';
+import {
+  createThemeFromSourceColor,
+  createThemeFromSystemSchemes,
+} from './createMaterial3Theme';
+import type { Material3Theme, SystemScheme } from './types';
+import { useState } from 'react';
 
-const LINKING_ERROR =
-  `The package 'react-native-material3-theme' doesn't seem to be linked. Make sure: \n\n` +
-  Platform.select({ ios: "- You have run 'pod install'\n", default: '' }) +
-  '- You rebuilt the app after installing the package\n' +
-  '- You are not using Expo Go\n';
+export const isDynamicThemeSupported =
+  !!NativeModules.Material3Theme &&
+  Platform.OS === 'android' &&
+  Platform.Version >= 31;
 
-const Material3Theme = NativeModules.Material3Theme
-  ? NativeModules.Material3Theme
-  : new Proxy(
-      {},
-      {
-        get() {
-          throw new Error(LINKING_ERROR);
-        },
-      }
-    );
+/**
+ * Hook to manage material3 theme.
+ *
+ * It returns:
+ * - a Material 3 theme:
+ *   - the system theme (or a fallback theme if not supported) if sourceColor is not provided
+ *   - a theme based on sourceColor if provided
+ * - a function to update the theme based on a source color
+ * - a function to reset the theme to default
+ *
+ * @param params.fallbackSourceColor - optional - source color for the fallback theme (default to #6750A4)
+ * @param params.sourceColor - optional - source color for the theme (overwrite system theme)
+ * @returns
+ */
+export function useMaterial3Theme(params?: {
+  fallbackSourceColor?: string;
+  sourceColor?: string;
+}) {
+  const { fallbackSourceColor = '#6750A4', sourceColor } = params || {};
 
-export function multiply(a: number, b: number): Promise<number> {
-  return Material3Theme.multiply(a, b);
+  const [theme, setTheme] = useState<Material3Theme>(
+    sourceColor
+      ? createMaterial3Theme(sourceColor)
+      : getMaterial3Theme(fallbackSourceColor)
+  );
+
+  const updateTheme = (sourceColor: string) => {
+    setTheme(createThemeFromSourceColor(sourceColor));
+  };
+
+  const resetTheme = () => {
+    setTheme(getMaterial3Theme(fallbackSourceColor));
+  };
+
+  return { theme, updateTheme, resetTheme };
+}
+
+/**
+ * Get the Material 3 theme from the system (works only on Android 12+).
+ *
+ * If the system does not support Material3, it will return a theme based on the fallback source color.
+ *
+ * @param fallbackSourceColor source color for the fallback theme (default to #6750A4)
+ * @returns
+ */
+export function getMaterial3Theme(
+  fallbackSourceColor: string = '#6750A4'
+): Material3Theme {
+  if (!isDynamicThemeSupported) {
+    return createThemeFromSourceColor(fallbackSourceColor);
+  }
+
+  const systemSchemes = NativeModules.Material3Theme.getSystemTheme() as {
+    light: SystemScheme;
+    dark: SystemScheme;
+  } | null;
+
+  if (systemSchemes) {
+    return createThemeFromSystemSchemes(systemSchemes);
+  }
+  return createThemeFromSourceColor(fallbackSourceColor);
+}
+
+/**
+ * Create a Material 3 theme based on the source color.
+ *
+ * @param sourceColor source color for the theme
+ * @returns
+ */
+export function createMaterial3Theme(sourceColor: string): Material3Theme {
+  return createThemeFromSourceColor(sourceColor);
 }
